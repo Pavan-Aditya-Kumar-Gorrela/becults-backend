@@ -1,6 +1,7 @@
 import User from '../models/User.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import { sendOTPEmail, sendWelcomeEmail } from '../services/mailerService.js';
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -45,7 +46,16 @@ export const signup = async (req, res) => {
       fullName,
       email,
       password,
+      authProvider: 'local',
     });
+
+    // Send welcome email
+    try {
+      await sendWelcomeEmail(email, fullName);
+    } catch (emailError) {
+      console.error('Failed to send welcome email:', emailError.message);
+      // Continue even if email fails
+    }
 
     // Generate token
     const token = generateToken(user._id);
@@ -90,6 +100,14 @@ export const login = async (req, res) => {
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials',
+      });
+    }
+
+    // Check if user has local auth
+    if (user.authProvider !== 'local') {
+      return res.status(401).json({
+        success: false,
+        message: `This account uses ${user.authProvider} authentication. Please sign in with ${user.authProvider}`,
       });
     }
 
@@ -160,18 +178,27 @@ export const forgotPassword = async (req, res) => {
 
     await user.save();
 
-    // In a real application, you would send this via email
-    // For testing purposes, we're returning it
+    // Send OTP via email
+    try {
+      await sendOTPEmail(email, resetToken, user.fullName);
+    } catch (emailError) {
+      console.error('Failed to send OTP email:', emailError.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send reset code. Please try again later.',
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: 'Reset code sent to your email',
-      // ONLY FOR TESTING - Remove in production
-      testResetToken: resetToken,
     });
   } catch (error) {
+    console.log(error);
     res.status(500).json({
       success: false,
       message: error.message,
+      
     });
   }
 };
@@ -296,6 +323,128 @@ export const getCurrentUser = async (req, res) => {
     res.status(200).json({
       success: true,
       user,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// @desc    Update user profile
+// @route   PUT /api/auth/profile
+// @access  Private
+export const updateProfile = async (req, res) => {
+  try {
+    const { fullName, bio, phone, address, profileImage } = req.body;
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      {
+        fullName: fullName || req.user.fullName,
+        bio,
+        phone,
+        address,
+        profileImage: profileImage || req.user.profileImage,
+      },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully',
+      user,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// @desc    Admin Login
+// @route   POST /api/auth/admin/login
+// @access  Public
+export const adminLogin = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Validation
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide email and password',
+      });
+    }
+
+    // Find user and include password field
+    const user = await User.findOne({ email }).select('+password');
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials',
+      });
+    }
+
+    // Check if user is admin
+    if (!user.isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - not an admin',
+      });
+    }
+
+    // Check if user has local auth
+    if (user.authProvider !== 'local') {
+      return res.status(401).json({
+        success: false,
+        message: `This account uses ${user.authProvider} authentication. Please sign in with ${user.authProvider}`,
+      });
+    }
+
+    // Check password
+    const isPasswordMatch = await user.matchPassword(password);
+    if (!isPasswordMatch) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials',
+      });
+    }
+
+    // Generate token
+    const token = generateToken(user._id);
+
+    res.status(200).json({
+      success: true,
+      message: 'Admin login successful',
+      token,
+      user: {
+        id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        isAdmin: user.isAdmin,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// @desc    Logout user
+// @route   POST /api/auth/logout
+// @access  Private
+export const logout = async (req, res) => {
+  try {
+    // Client-side token removal is handled by frontend
+    res.status(200).json({
+      success: true,
+      message: 'Logged out successfully',
     });
   } catch (error) {
     res.status(500).json({

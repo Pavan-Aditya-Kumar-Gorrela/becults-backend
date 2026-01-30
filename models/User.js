@@ -5,57 +5,53 @@ const userSchema = new mongoose.Schema(
   {
     fullName: {
       type: String,
-      required: [true, 'Please provide a full name'],
+      required: true,
       trim: true,
       minlength: 2,
       maxlength: 50,
     },
     email: {
       type: String,
-      required: [true, 'Please provide an email'],
+      required: true,
       unique: true,
       lowercase: true,
-      match: [
-        /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
-        'Please provide a valid email',
-      ],
     },
     password: {
       type: String,
-      required: [true, 'Please provide a password'],
       minlength: 6,
-      select: false, // Don't return password by default
+      select: false,
     },
-    resetToken: {
+    authProvider: {
       type: String,
-      select: false,
+      enum: ['local', 'google', 'github'],
+      default: 'local',
     },
-    resetTokenExpires: {
-      type: Date,
-      select: false,
+    googleId: { type: String, sparse: true, unique: true },
+    githubId: { type: String, sparse: true, unique: true },
+    profileImage: String,
+    resetToken: { type: String, select: false },
+    resetTokenExpires: { type: Date, select: false },
+    isAdmin: {
+      type: Boolean,
+      default: false,
     },
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
+    bio: String,
+    phone: String,
+    address: String,
   },
   { timestamps: true }
 );
 
-// Hash password before saving
-userSchema.pre('save', async function (next) {
-  // Only hash if password is modified
-  if (!this.isModified('password')) {
-    next();
-  }
+// ✅ SAFE ASYNC HOOK
+userSchema.pre('save', async function () {
+  if (!this.isModified('password') || !this.password) return;
 
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
 });
 
-// Match password method
 userSchema.methods.matchPassword = async function (enteredPassword) {
-  return await bcrypt.compare(enteredPassword, this.password);
+  return bcrypt.compare(enteredPassword, this.password);
 };
 
 export default mongoose.model('User', userSchema);
