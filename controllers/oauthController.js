@@ -107,8 +107,21 @@ export const githubCallback = async (req, res) => {
     if (code) {
       console.log('[GitHub OAuth Code Exchange] Starting with code:', code?.substring(0, 10) + '...');
 
-      // Exchange code for access token
-      console.log('[GitHub OAuth] Exchanging code for access token...');
+      // Validate GitHub credentials exist
+      if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
+        console.error('[GitHub OAuth] Missing credentials - CLIENT_ID:', !!process.env.GITHUB_CLIENT_ID, 'CLIENT_SECRET:', !!process.env.GITHUB_CLIENT_SECRET);
+        return res.status(500).json({
+          success: false,
+          message: 'Server not properly configured: Missing GitHub credentials',
+          debug: {
+            hasClientId: !!process.env.GITHUB_CLIENT_ID,
+            hasClientSecret: !!process.env.GITHUB_CLIENT_SECRET,
+          }
+        });
+      }
+
+      console.log('[GitHub OAuth] Exchanging code for access token with CLIENT_ID:', process.env.GITHUB_CLIENT_ID?.substring(0, 5) + '...');
+      
       const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
         method: 'POST',
         headers: {
@@ -123,17 +136,27 @@ export const githubCallback = async (req, res) => {
       });
 
       const tokenData = await tokenResponse.json();
+      console.log('[GitHub OAuth] Token response:', { hasError: !!tokenData.error, hasToken: !!tokenData.access_token });
 
       if (tokenData.error) {
-        console.error('[GitHub OAuth] Token exchange failed:', tokenData.error);
+        console.error('[GitHub OAuth] Token exchange failed:', tokenData.error, tokenData.error_description);
         return res.status(401).json({
           success: false,
-          message: 'Failed to exchange authorization code',
+          message: `Failed to exchange authorization code: ${tokenData.error_description || tokenData.error}`,
+          error: tokenData.error,
+        });
+      }
+
+      if (!tokenData.access_token) {
+        console.error('[GitHub OAuth] No access token in response');
+        return res.status(401).json({
+          success: false,
+          message: 'Failed to obtain access token from GitHub',
         });
       }
 
       const accessToken = tokenData.access_token;
-      console.log('[GitHub OAuth] Access token obtained');
+      console.log('[GitHub OAuth] Access token obtained successfully');
 
       // Fetch user information from GitHub
       console.log('[GitHub OAuth] Fetching user info from GitHub...');
@@ -141,11 +164,22 @@ export const githubCallback = async (req, res) => {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'Becults-App',
         },
       });
 
+      if (!userResponse.ok) {
+        console.error('[GitHub OAuth] Failed to fetch user info:', userResponse.status, userResponse.statusText);
+        const errorData = await userResponse.json();
+        return res.status(401).json({
+          success: false,
+          message: 'Failed to fetch user information from GitHub',
+          error: errorData.message,
+        });
+      }
+
       const githubUser = await userResponse.json();
-      console.log('[GitHub OAuth] User info received:', { login: githubUser.login });
+      console.log('[GitHub OAuth] User info received:', { login: githubUser.login, id: githubUser.id });
 
       // Get user email if not public
       let userEmail = githubUser.email;
@@ -155,26 +189,34 @@ export const githubCallback = async (req, res) => {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
             'Accept': 'application/vnd.github.v3+json',
+            'User-Agent': 'Becults-App',
           },
         });
 
-        const emails = await emailResponse.json();
-        const primaryEmail = emails.find(e => e.primary);
-        userEmail = primaryEmail?.email || emails[0]?.email;
-        console.log('[GitHub OAuth] Primary email found:', userEmail);
+        if (emailResponse.ok) {
+          const emails = await emailResponse.json();
+          console.log('[GitHub OAuth] Emails retrieved, count:', emails.length);
+          const primaryEmail = emails.find(e => e.primary);
+          userEmail = primaryEmail?.email || emails[0]?.email;
+          console.log('[GitHub OAuth] Primary email found:', userEmail);
+        } else {
+          console.warn('[GitHub OAuth] Could not fetch emails endpoint:', emailResponse.status);
+        }
       }
 
       if (!userEmail) {
-        console.error('[GitHub OAuth] No email found');
+        console.error('[GitHub OAuth] No email found - user must make email public or allow OAuth apps');
         return res.status(400).json({
           success: false,
-          message: 'Unable to retrieve email from GitHub',
+          message: 'Unable to retrieve email from GitHub. Please ensure your email is visible in GitHub privacy settings (Settings > Email > Keep my email addresses private should be unchecked).',
         });
       }
 
       const userGithubId = githubUser.id.toString();
       const userName = githubUser.name || githubUser.login;
       const userPicture = githubUser.avatar_url;
+
+      console.log('[GitHub OAuth] Processed user data:', { githubId: userGithubId, email: userEmail, name: userName });
 
       // Find or create user
       let user = await User.findOne({
@@ -186,6 +228,8 @@ export const githubCallback = async (req, res) => {
         // User exists, update github info if needed
         if (!user.githubId) {
           user.githubId = userGithubId;
+        }
+        if (!user.authProvider || user.authProvider !== 'github') {
           user.authProvider = 'github';
         }
         if (userPicture && !user.profileImage) {
@@ -208,8 +252,9 @@ export const githubCallback = async (req, res) => {
         // Send welcome email
         try {
           await sendOAuthWelcomeEmail(userEmail, userName, 'GitHub');
+          console.log('[GitHub OAuth] Welcome email sent');
         } catch (emailError) {
-          console.error('Failed to send welcome email:', emailError.message);
+          console.error('[GitHub OAuth] Failed to send welcome email:', emailError.message);
         }
       }
 
@@ -231,17 +276,17 @@ export const githubCallback = async (req, res) => {
     }
 
     // Legacy endpoint handling (if githubId, email, fullName are provided directly)
-    console.log('[GitHub OAuth] Request received:', { email });
+    console.log('[GitHub OAuth] Legacy request received:', { email });
 
     if (!githubId || !email) {
-      console.error('[GitHub OAuth] Missing required fields');
+      console.error('[GitHub OAuth] Missing required fields in legacy request');
       return res.status(400).json({
         success: false,
         message: 'Missing required fields',
       });
     }
 
-    console.log('[GitHub OAuth] Processing...');
+    console.log('[GitHub OAuth] Processing legacy request...');
     // Find or create user
     let user = await User.findOne({
       $or: [{ githubId }, { email }],
@@ -274,8 +319,9 @@ export const githubCallback = async (req, res) => {
       // Send welcome email
       try {
         await sendOAuthWelcomeEmail(email, fullName, 'GitHub');
+        console.log('[GitHub OAuth] Welcome email sent');
       } catch (emailError) {
-        console.error('Failed to send welcome email:', emailError.message);
+        console.error('[GitHub OAuth] Failed to send welcome email:', emailError.message);
       }
     }
 
@@ -295,10 +341,10 @@ export const githubCallback = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('[GitHub OAuth] Error:', error.message);
+    console.error('[GitHub OAuth] Catch block error:', error.message, error.stack);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message || 'An error occurred during GitHub authentication',
     });
   }
 };
