@@ -166,7 +166,7 @@ export const toggleCohortStatus = async (req, res) => {
 // @access  Private/Admin
 export const addRoadmapItem = async (req, res) => {
   try {
-    const { title, description, order } = req.body;
+    const { title, description, references, order } = req.body;
 
     if (!title || !description) {
       return res.status(400).json({
@@ -187,6 +187,7 @@ export const addRoadmapItem = async (req, res) => {
     cohort.roadmap.push({
       title,
       description,
+      references: references || [],
       order: order || cohort.roadmap.length + 1,
     });
 

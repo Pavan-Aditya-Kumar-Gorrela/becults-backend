@@ -12,6 +12,10 @@ const roadmapItemSchema = new mongoose.Schema({
     required: true,
     maxlength: 500,
   },
+  references: [{
+    type: String,
+    trim: true,
+  }],
   order: {
     type: Number,
     required: true,

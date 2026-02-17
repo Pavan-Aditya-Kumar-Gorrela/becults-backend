@@ -22,11 +22,12 @@ export const getChannelInfo = async (req, res) => {
       });
     }
 
-    // Check if user is enrolled in the cohort
+    // Check if user is enrolled in the cohort (admins can bypass)
     const cohort = channel.cohortId;
     const isEnrolled = cohort.enrolledUsers.includes(userId);
+    const isAdmin = req.user.isAdmin;
 
-    if (!isEnrolled) {
+    if (!isEnrolled && !isAdmin) {
       return res.status(403).json({
         success: false,
         message: 'You are not enrolled in this cohort',
@@ -37,6 +38,7 @@ export const getChannelInfo = async (req, res) => {
     let member = channel.members.find(m => m.user._id.toString() === userId.toString());
     
     // Auto-add user to channel if not already a member (with canChat: true by default)
+    // Admins are always added with canChat: true
     if (!member) {
       channel.members.push({ user: userId, canChat: true });
       await channel.save();
@@ -47,6 +49,12 @@ export const getChannelInfo = async (req, res) => {
         .populate('members.user', 'fullName email profileImage');
       
       member = channel.members.find(m => m.user._id.toString() === userId.toString());
+    }
+    
+    // Ensure admins always have canChat: true
+    if (isAdmin && member && !member.canChat) {
+      member.canChat = true;
+      await channel.save();
     }
 
     const canChat = member ? member.canChat : true;
@@ -92,9 +100,10 @@ export const getChannelMessages = async (req, res) => {
       });
     }
 
-    // Check if user is enrolled in the cohort
+    // Check if user is enrolled in the cohort (admins can bypass)
     const isEnrolled = channel.cohortId.enrolledUsers.includes(userId);
-    if (!isEnrolled) {
+    const isAdmin = req.user.isAdmin;
+    if (!isEnrolled && !isAdmin) {
       return res.status(403).json({
         success: false,
         message: 'You are not enrolled in this cohort',
@@ -168,22 +177,29 @@ export const sendMessage = async (req, res) => {
       });
     }
 
-    // Check if user is enrolled in the cohort
+    // Check if user is enrolled in the cohort (admins can bypass)
     const isEnrolled = channel.cohortId.enrolledUsers.includes(userId);
-    if (!isEnrolled) {
+    const isAdmin = req.user.isAdmin;
+    if (!isEnrolled && !isAdmin) {
       return res.status(403).json({
         success: false,
         message: 'You are not enrolled in this cohort',
       });
     }
 
-    // Check if user is muted
+    // Check if user is muted (admins cannot be muted)
     const member = channel.members.find(m => m.user.toString() === userId.toString());
-    if (!member || !member.canChat) {
+    if ((!member || !member.canChat) && !isAdmin) {
       return res.status(403).json({
         success: false,
         message: 'You are muted in this channel',
       });
+    }
+
+    // Auto-add admin to channel if not already a member
+    if (isAdmin && !member) {
+      channel.members.push({ user: userId, canChat: true });
+      await channel.save();
     }
 
     // Create message

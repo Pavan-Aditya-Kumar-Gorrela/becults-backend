@@ -96,6 +96,7 @@ export const getCohortDetails = async (req, res) => {
 
     console.log('[Cohort] User accessed cohort details:', { userId, cohortId: id });
 
+    // Return full cohort data including roadmap and videos
     res.status(200).json({
       success: true,
       data: {
@@ -106,7 +107,11 @@ export const getCohortDetails = async (req, res) => {
         createdBy: cohort.createdBy,
         roadmap: cohort.roadmap || [],
         videos: cohort.videos || [],
+        enrolledUsers: cohort.enrolledUsers || [],
         enrolledCount: cohort.enrolledUsers.length,
+        isActive: cohort.isActive,
+        createdAt: cohort.createdAt,
+        updatedAt: cohort.updatedAt,
       },
     });
   } catch (error) {
