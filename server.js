@@ -38,8 +38,8 @@ const io = new SocketIOServer(httpServer, {
 // Middleware
 app.use(cors({
   origin: [
-    "https://becults-frontend.vercel.app/",
-    "http://localhost:5173/"
+    "https://becults-frontend.vercel.app",
+    "http://localhost:5173"
   ],
   credentials: true,
 }));
