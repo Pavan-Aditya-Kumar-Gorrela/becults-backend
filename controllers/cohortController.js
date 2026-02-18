@@ -33,6 +33,32 @@ export const getAllCohorts = async (req, res) => {
   }
 };
 
+// @desc    Get upcoming cohorts (currently: inactive cohorts)
+// @route   GET /api/cohorts/upcoming
+// @access  Public
+export const getUpcomingCohorts = async (req, res) => {
+  try {
+    // Here "upcoming" is defined as cohorts that are created but not yet active.
+    // If you later add startDate, you can refine this query.
+    const cohorts = await Cohort.find({ isActive: false })
+      .populate('createdBy', 'fullName profileImage')
+      .select('title description category enrolledUsers createdBy createdAt');
+
+    res.status(200).json({
+      success: true,
+      count: cohorts.length,
+      data: cohorts,
+    });
+  } catch (error) {
+    console.error('[Cohort] Get upcoming cohorts error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching upcoming cohorts',
+      error: error.message,
+    });
+  }
+};
+
 // @desc    Get single cohort by ID (public - no enrollment check)
 // @route   GET /api/cohorts/:id
 // @access  Public
@@ -96,7 +122,7 @@ export const getCohortDetails = async (req, res) => {
 
     console.log('[Cohort] User accessed cohort details:', { userId, cohortId: id });
 
-    // Return full cohort data including roadmap and videos
+    // Return full cohort data including roadmap, videos and resources
     res.status(200).json({
       success: true,
       data: {
@@ -107,6 +133,7 @@ export const getCohortDetails = async (req, res) => {
         createdBy: cohort.createdBy,
         roadmap: cohort.roadmap || [],
         videos: cohort.videos || [],
+        resources: cohort.resources || [],
         enrolledUsers: cohort.enrolledUsers || [],
         enrolledCount: cohort.enrolledUsers.length,
         isActive: cohort.isActive,
@@ -298,6 +325,7 @@ export const getUserEnrolledCohorts = async (req, res) => {
 
 export default {
   getAllCohorts,
+  getUpcomingCohorts,
   getCohortById,
   getCohortDetails,
   createCohort,

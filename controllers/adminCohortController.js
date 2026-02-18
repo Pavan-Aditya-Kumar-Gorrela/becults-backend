@@ -5,7 +5,15 @@ import Cohort from '../models/Cohort.js';
 // @access  Private/Admin
 export const createCohort = async (req, res) => {
   try {
-    const { title, description, category, roadmap = [], videos = [] } = req.body;
+    const {
+      title,
+      description,
+      category,
+      roadmap = [],
+      videos = [],
+      resources = [],
+      isActive, // optional, allow admin to mark as upcoming or present
+    } = req.body;
 
     // Validate required fields
     if (!title || !description || !category) {
@@ -23,7 +31,9 @@ export const createCohort = async (req, res) => {
       createdBy: req.user._id,
       roadmap,
       videos,
-      isActive: true,
+      resources,
+      // default to true if not explicitly provided
+      isActive: typeof isActive === 'boolean' ? isActive : true,
       enrolledUsers: [],
     });
 
@@ -96,7 +106,7 @@ export const getCohortAdmin = async (req, res) => {
 // @access  Private/Admin
 export const updateCohort = async (req, res) => {
   try {
-    const { title, description, category, roadmap, videos } = req.body;
+    const { title, description, category, roadmap, videos, resources } = req.body;
 
     // Find cohort
     let cohort = await Cohort.findById(req.params.id);
@@ -114,6 +124,7 @@ export const updateCohort = async (req, res) => {
     if (category !== undefined) cohort.category = category;
     if (roadmap !== undefined) cohort.roadmap = roadmap;
     if (videos !== undefined) cohort.videos = videos;
+    if (resources !== undefined) cohort.resources = resources;
 
     // Save
     cohort = await cohort.save();
@@ -301,6 +312,84 @@ export const deleteVideo = async (req, res) => {
     res.status(200).json({
       success: true,
       message: 'Video deleted',
+      data: cohort,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// @desc    Add generic resource to cohort (image, pdf, link, etc.)
+// @route   POST /api/admin/cohorts/:id/resources
+// @access  Private/Admin
+export const addResource = async (req, res) => {
+  try {
+    const { title, type, url, description, order } = req.body;
+
+    if (!title || !url || !type) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide title, type, and url for the resource',
+      });
+    }
+
+    const cohort = await Cohort.findById(req.params.id);
+
+    if (!cohort) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cohort not found',
+      });
+    }
+
+    cohort.resources.push({
+      title,
+      type,
+      url,
+      description: description || '',
+      order: order || cohort.resources.length + 1,
+    });
+
+    await cohort.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Resource added',
+      data: cohort,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// @desc    Delete resource from cohort
+// @route   DELETE /api/admin/cohorts/:id/resources/:resourceId
+// @access  Private/Admin
+export const deleteResource = async (req, res) => {
+  try {
+    const cohort = await Cohort.findById(req.params.id);
+
+    if (!cohort) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cohort not found',
+      });
+    }
+
+    cohort.resources = cohort.resources.filter(
+      (resource) => resource._id.toString() !== req.params.resourceId
+    );
+    await cohort.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Resource deleted',
       data: cohort,
     });
   } catch (error) {

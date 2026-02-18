@@ -11,6 +11,8 @@ import {
   addVideo,
   deleteVideo,
   deleteCohort,
+  addResource,
+  deleteResource,
 } from '../controllers/adminCohortController.js';
 
 const router = express.Router();
@@ -59,5 +61,14 @@ router.post('/:id/videos', addVideo);
 // @route   DELETE /api/admin/cohorts/:id/videos/:videoId
 // @desc    Delete video
 router.delete('/:id/videos/:videoId', deleteVideo);
+
+// Resource management
+// @route   POST /api/admin/cohorts/:id/resources
+// @desc    Add generic resource (image, pdf, link, etc.)
+router.post('/:id/resources', addResource);
+
+// @route   DELETE /api/admin/cohorts/:id/resources/:resourceId
+// @desc    Delete resource
+router.delete('/:id/resources/:resourceId', deleteResource);
 
 export default router;

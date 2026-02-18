@@ -179,8 +179,80 @@ export const sendOAuthWelcomeEmail = async (email, fullName, provider) => {
   }
 };
 
+export const sendAdminInvitationEmail = async (email, password, inviterName) => {
+  try {
+    const mailOptions = {
+      from: `${process.env.SMTP_FROM_NAME} <${process.env.SMTP_FROM_EMAIL}>`,
+      to: email,
+      subject: 'Admin Access Invitation - BeCults',
+      html: `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; background-color: #f4f4f4; }
+              .container { max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 8px; }
+              .header { text-align: center; color: #333; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 8px 8px 0 0; margin: -30px -30px 20px -30px; }
+              .header h1 { color: white; margin: 0; }
+              .content { margin: 20px 0; color: #666; line-height: 1.6; }
+              .credentials-box { background-color: #f8f9fa; border-left: 4px solid #667eea; padding: 20px; margin: 20px 0; border-radius: 4px; }
+              .credential-item { margin: 10px 0; }
+              .credential-label { font-weight: bold; color: #333; }
+              .credential-value { font-family: monospace; background-color: white; padding: 8px 12px; border-radius: 4px; display: inline-block; margin-top: 5px; color: #667eea; font-weight: bold; }
+              .button { display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+              .warning-box { background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px; }
+              .footer { text-align: center; color: #999; font-size: 12px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>🔐 Admin Access Invitation</h1>
+              </div>
+              <div class="content">
+                <p>Hello,</p>
+                <p>You have been invited by <strong>${inviterName}</strong> to join BeCults as an administrator.</p>
+                <p>Your admin account has been created. Please use the credentials below to log in:</p>
+              </div>
+              <div class="credentials-box">
+                <div class="credential-item">
+                  <div class="credential-label">Email:</div>
+                  <div class="credential-value">${email}</div>
+                </div>
+                <div class="credential-item">
+                  <div class="credential-label">Password:</div>
+                  <div class="credential-value">${password}</div>
+                </div>
+              </div>
+              <div style="text-align: center;">
+                <a href="${process.env.FRONTEND_URL}/admin/login" class="button">Login to Admin Panel</a>
+              </div>
+              <div class="content">
+                <p>If you have any questions or need assistance, please contact the system administrator.</p>
+                <p>Welcome to the BeCults admin team!</p>
+              </div>
+              <div class="footer">
+                <p>&copy; 2026 BeCults. All rights reserved.</p>
+                <p>This is an automated message. Please do not reply to this email.</p>
+              </div>
+            </div>
+          </body>
+        </html>
+      `,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('✓ Admin invitation email sent:', info.response);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('✗ Error sending admin invitation email:', error.message);
+    throw error;
+  }
+};
+
 export default {
   sendOTPEmail,
   sendWelcomeEmail,
   sendOAuthWelcomeEmail,
+  sendAdminInvitationEmail,
 };
